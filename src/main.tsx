@@ -5,7 +5,7 @@ import './styles.css'
 
 const rootEl = document.getElementById('root')
 
-function showFatal(message) {
+function showFatal(message: unknown) {
   if (!rootEl) return
   rootEl.innerHTML = `
     <div style="max-width:900px;margin:24px auto;padding:16px;border:1px solid #5a2a2a;border-radius:12px;background:#1a0f12;color:#ffd7d7;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">
@@ -20,11 +20,13 @@ window.addEventListener('error', (event) => {
 })
 
 window.addEventListener('unhandledrejection', (event) => {
-  showFatal(event.reason?.stack || event.reason || 'Unhandled promise rejection')
+  const reason = (event as PromiseRejectionEvent).reason
+  showFatal(reason?.stack || reason || 'Unhandled promise rejection')
 })
 
 try {
+  if (!rootEl) throw new Error('Root element #root not found')
   createRoot(rootEl).render(<App />)
 } catch (err) {
-  showFatal(err?.stack || err)
+  showFatal(err)
 }

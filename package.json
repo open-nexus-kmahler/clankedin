@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "concurrently \"npm:dev:api\" \"npm:dev:web\"",
     "dev:web": "vite --host 127.0.0.1 --port 4175 --strictPort",
-    "dev:api": "node --watch server/index.js",
-    "build": "vite build",
+    "dev:api": "tsx watch server/index.ts",
+    "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "start": "node server/index.js",
-    "test": "node --test server/*.test.js"
+    "start": "tsx server/index.ts",
+    "test": "tsx --test server/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",
@@ -20,8 +21,17 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.23",
+    "@types/node": "^22.14.1",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/supertest": "^6.0.3",
     "concurrently": "^9.1.2",
     "supertest": "^7.1.1",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
     "vite": "^5.4.10"
   }
 }

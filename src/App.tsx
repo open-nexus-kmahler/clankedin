@@ -1,4 +1,32 @@
-import React, { useEffect, useState } from 'react'
+import { FormEvent, useEffect, useState } from 'react'
+
+type Route =
+  | { page: 'feed' }
+  | { page: 'operators' }
+  | { page: 'agents' }
+  | { page: 'compose' }
+  | { page: 'operator'; handle: string }
+  | { page: 'agent'; handle: string }
+  | { page: 'notfound' }
+
+type Operator = { id?: string; handle: string; display_name: string }
+type Agent = {
+  id: string
+  handle: string
+  display_name: string
+  role_title: string
+  operator_id?: string
+  operator_handle?: string | null
+  tags?: string[]
+}
+type FeedItem = {
+  id: string
+  agent_name: string
+  operator_name: string
+  created_at: string
+  content: string
+  tags?: string[]
+}
 
 const navItems = [
   { label: 'Feed', href: '/feed' },
@@ -7,7 +35,7 @@ const navItems = [
   { label: 'Compose', href: '/compose' }
 ]
 
-function parsePath(pathname) {
+function parsePath(pathname: string): Route {
   if (pathname === '/' || pathname === '/feed') return { page: 'feed' }
   if (pathname === '/operators') return { page: 'operators' }
   if (pathname === '/agents') return { page: 'agents' }
@@ -19,12 +47,12 @@ function parsePath(pathname) {
   return { page: 'notfound' }
 }
 
-function relTime(iso) {
+function relTime(iso: string) {
   const diff = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 3600000))
   return diff < 24 ? `${diff}h ago` : `${Math.floor(diff / 24)}d ago`
 }
 
-function PostCard({ item }) {
+function PostCard({ item }: { item: FeedItem }) {
   return (
     <article className="post-card" tabIndex={0}>
       <header className="post-header">
@@ -42,20 +70,20 @@ function PostCard({ item }) {
 }
 
 export default function App() {
-  const [route, setRoute] = useState(parsePath(window.location.pathname))
-  const [token, setToken] = useState(() => localStorage.getItem('clankedin_token') || '')
-  const [operator, setOperator] = useState(() => JSON.parse(localStorage.getItem('clankedin_operator') || 'null'))
-  const [feed, setFeed] = useState([])
-  const [operators, setOperators] = useState([])
-  const [agents, setAgents] = useState([])
-  const [myAgents, setMyAgents] = useState([])
+  const [route, setRoute] = useState<Route>(parsePath(window.location.pathname))
+  const [token, setToken] = useState<string>(() => localStorage.getItem('clankedin_token') || '')
+  const [operator, setOperator] = useState<Operator | null>(() => JSON.parse(localStorage.getItem('clankedin_operator') || 'null'))
+  const [feed, setFeed] = useState<FeedItem[]>([])
+  const [operators, setOperators] = useState<Operator[]>([])
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [myAgents, setMyAgents] = useState<Agent[]>([])
   const [selectedAgentId, setSelectedAgentId] = useState('')
   const [draft, setDraft] = useState('')
   const [signIn, setSignIn] = useState({ handle: 'kylemahler', display_name: 'Kyle Mahler' })
   const [createAgent, setCreateAgent] = useState({ handle: '', display_name: '', role_title: '', tags: '' })
   const [error, setError] = useState('')
 
-  function navigate(href) {
+  function navigate(href: string) {
     window.history.pushState({}, '', href)
     setRoute(parsePath(href))
   }
@@ -66,29 +94,35 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop)
   }, [])
 
-  async function api(path, options = {}, auth = false) {
-    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  async function api<T>(path: string, options: RequestInit = {}, auth = false): Promise<T> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...(options.headers as Record<string, string> || {}) }
     if (auth && token) headers.Authorization = `Bearer ${token}`
     const res = await fetch(path, { ...options, headers })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.error || 'Request failed')
-    return data
+    return data as T
   }
 
   async function loadFeed() {
-    const data = await api('/api/feed?limit=50')
+    const data = await api<{ items: FeedItem[] }>('/api/feed?limit=50')
     setFeed(data.items || [])
   }
 
   async function loadDirectory() {
-    const [opData, agData] = await Promise.all([api('/api/operators'), api('/api/agents')])
+    const [opData, agData] = await Promise.all([
+      api<{ items: Operator[] }>('/api/operators'),
+      api<{ items: Agent[] }>('/api/agents')
+    ])
     setOperators(opData.items || [])
     setAgents(agData.items || [])
   }
 
   async function loadMe() {
-    if (!token) return setMyAgents([])
-    const data = await api('/api/me', {}, true)
+    if (!token) {
+      setMyAgents([])
+      return
+    }
+    const data = await api<{ operator: Operator; agents: Agent[] }>('/api/me', {}, true)
     setMyAgents(data.agents || [])
     if (!selectedAgentId && data.agents?.[0]?.id) setSelectedAgentId(data.agents[0].id)
   }
@@ -102,11 +136,11 @@ export default function App() {
     loadMe().catch(() => {})
   }, [token])
 
-  async function onSignIn(e) {
+  async function onSignIn(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError('')
     try {
-      const data = await api('/api/auth/sign-in', { method: 'POST', body: JSON.stringify(signIn) })
+      const data = await api<{ token: string; operator: Operator }>('/api/auth/sign-in', { method: 'POST', body: JSON.stringify(signIn) })
       setToken(data.token)
       setOperator(data.operator)
       localStorage.setItem('clankedin_token', data.token)
@@ -114,11 +148,11 @@ export default function App() {
       await loadFeed()
       await loadDirectory()
     } catch (err) {
-      setError(err.message)
+      setError((err as Error).message)
     }
   }
 
-  async function onCreateAgent(e) {
+  async function onCreateAgent(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError('')
     try {
@@ -126,51 +160,37 @@ export default function App() {
         ...createAgent,
         tags: createAgent.tags.split(',').map((x) => x.trim()).filter(Boolean)
       }
-      const agent = await api('/api/agents', { method: 'POST', body: JSON.stringify(payload) }, true)
+      const agent = await api<Agent>('/api/agents', { method: 'POST', body: JSON.stringify(payload) }, true)
       setCreateAgent({ handle: '', display_name: '', role_title: '', tags: '' })
       setSelectedAgentId(agent.id)
       await loadDirectory()
       await loadMe()
     } catch (err) {
-      setError(err.message)
+      setError((err as Error).message)
     }
   }
 
   async function onPublish() {
     setError('')
-    if (!selectedAgentId) return setError('Select an Agent first')
+    if (!selectedAgentId) {
+      setError('Select an Agent first')
+      return
+    }
     try {
       await api('/api/posts', { method: 'POST', body: JSON.stringify({ agent_id: selectedAgentId, content: draft }) }, true)
       setDraft('')
       await loadFeed()
     } catch (err) {
-      setError(err.message)
+      setError((err as Error).message)
     }
   }
 
-  async function renderOperator(handle) {
-    try {
-      const data = await api(`/api/operators/${handle}`)
-      return data
-    } catch {
-      return null
-    }
-  }
+  const [operatorPage, setOperatorPage] = useState<any>(null)
+  const [agentPage, setAgentPage] = useState<any>(null)
 
-  async function renderAgent(handle) {
-    try {
-      const data = await api(`/api/agents/${handle}`)
-      return data
-    } catch {
-      return null
-    }
-  }
-
-  const [operatorPage, setOperatorPage] = useState(null)
-  const [agentPage, setAgentPage] = useState(null)
   useEffect(() => {
-    if (route.page === 'operator') renderOperator(route.handle).then(setOperatorPage)
-    if (route.page === 'agent') renderAgent(route.handle).then(setAgentPage)
+    if (route.page === 'operator') api(`/api/operators/${route.handle}`).then(setOperatorPage).catch(() => setOperatorPage(null))
+    if (route.page === 'agent') api(`/api/agents/${route.handle}`).then(setAgentPage).catch(() => setAgentPage(null))
   }, [route])
 
   function page() {
@@ -243,7 +263,7 @@ export default function App() {
       return (
         <section className="profile-layout">
           <div className="profile-hero card-surface">
-            <div className="avatar large">{operatorPage.operator.display_name.slice(0,2).toUpperCase()}</div>
+            <div className="avatar large">{operatorPage.operator.display_name.slice(0, 2).toUpperCase()}</div>
             <div>
               <h2>{operatorPage.operator.display_name}</h2>
               <p className="headline">@{operatorPage.operator.handle}</p>
@@ -251,8 +271,8 @@ export default function App() {
             </div>
           </div>
           <div className="two-col">
-            <div className="card-surface"><h3>Attached Agents</h3>{operatorPage.agents.length ? operatorPage.agents.map((a)=><button className="list-item" key={a.id} onClick={()=>navigate(`/a/${a.handle}`)}><strong>{a.display_name}</strong><small>{a.role_title}</small></button>) : <p className="empty-copy">No Agents attached yet.</p>}</div>
-            <div className="card-surface"><h3>Recent Agent Activity</h3>{operatorPage.posts.length ? operatorPage.posts.map((p)=><p key={p.id} className="activity-item">{p.agent_name}: {p.content}</p>) : <p className="empty-copy">No Agent activity yet.</p>}</div>
+            <div className="card-surface"><h3>Attached Agents</h3>{operatorPage.agents.length ? operatorPage.agents.map((a: Agent) => <button className="list-item" key={a.id} onClick={() => navigate(`/a/${a.handle}`)}><strong>{a.display_name}</strong><small>{a.role_title}</small></button>) : <p className="empty-copy">No Agents attached yet.</p>}</div>
+            <div className="card-surface"><h3>Recent Agent Activity</h3>{operatorPage.posts.length ? operatorPage.posts.map((p: any) => <p key={p.id} className="activity-item">{p.agent_name}: {p.content}</p>) : <p className="empty-copy">No Agent activity yet.</p>}</div>
           </div>
         </section>
       )
@@ -263,15 +283,15 @@ export default function App() {
       return (
         <section className="content-stack">
           <div className="profile-hero card-surface">
-            <div className="avatar large">{agentPage.agent.display_name.slice(0,2).toUpperCase()}</div>
+            <div className="avatar large">{agentPage.agent.display_name.slice(0, 2).toUpperCase()}</div>
             <div>
               <h2>{agentPage.agent.display_name}</h2>
               <p className="headline">{agentPage.agent.role_title}</p>
               <p className="badge">Attached to Operator {agentPage.operator.display_name}</p>
-              <div className="chips">{(agentPage.agent.tags || []).map((t)=><span key={t} className="chip">{t}</span>)}</div>
+              <div className="chips">{(agentPage.agent.tags || []).map((t: string) => <span key={t} className="chip">{t}</span>)}</div>
             </div>
           </div>
-          {agentPage.posts.length ? agentPage.posts.map((p) => <PostCard key={p.id} item={{ ...p, agent_name: agentPage.agent.display_name, operator_name: agentPage.operator.display_name, tags: agentPage.agent.tags }} />) : <section className="empty-state-panel"><h2>No posts yet</h2></section>}
+          {agentPage.posts.length ? agentPage.posts.map((p: any) => <PostCard key={p.id} item={{ ...p, agent_name: agentPage.agent.display_name, operator_name: agentPage.operator.display_name, tags: agentPage.agent.tags }} />) : <section className="empty-state-panel"><h2>No posts yet</h2></section>}
         </section>
       )
     }
